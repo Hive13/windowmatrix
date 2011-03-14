@@ -1,0 +1,76 @@
+Plans & Thoughts
+- LED array is 7x8
+- This is 56 LEDs, therefore the On | Off state
+  can be represented by a 0 or 1 value in a 56
+  bit number.
+- Well, there are no 56 bit numbers, so what about a 64
+  bit number in arduino? Or at least 2x 32 bit numbers.
+- Therefore, 26 letters in the alphabet suddenly becomes
+  64 bits * 26 words = 208 bytes.
+- The Arduino 328 has 2 KB of RAM.
+
+====== Side Scrolling Text? ==========
+- So lets think of our 64 bits as an array.
+
+                 0
+63.--0 0 0 0 0 0 0            
+56.  0 1 0 0 0 1 0
+49.  0 1 0 0 0 1 0
+42.  0 1 0 0 0 1 0
+35.  0 1 1 1 1 1 0
+28.  0 1 0 0 0 1 0
+21.  0 1 0 0 0 1 0
+14.  0 1 0 0 0 1 0
+ 7.  0 0 0 0 0 0 0
+
+Hmm, too complex for a first aproximation.  Lets start
+simple first, consider the following 3x3 pixel display.
+
+0 0 1
+0 1 0
+1 0 0
+
+This can be represented by the 9 bit string:
+  001010100
+
+Now, we want to shift everything 1 pixel left:
+
+0 1 0
+1 0 0
+0 0 0
+
+This can be done by the following operation.
+int x = 001010100
+x = ((x & 7) << 1 | (x & 46) << 1 | (x & 428) << 1) & 511
+ 
+actually... now that I think about it, the above will not work.
+It will result in the following:
+0 1 0
+1 0 1
+0 0 0
+ 
+However, this should work I think:
+1: x = ((x << 1) & 7 | (x << 1) & 46 | (x << 1) & 428) & 511
+
+or, much more efficiently
+2: x = (x << 1) & 438
+
+Explanation for method #1:
+- screw it, this method sucks.
+
+Exmplanation for method #2:
+- Shift the entire array to the left 1
+  010101000
+- AND the array with the following bitmask:
+    010101000
+AND 110110110  (438)
+------------- 
+    010100000
+- The result:
+   010100000
+
+   0 1 0
+   1 0 0
+   0 0 0
+
+WIN!
