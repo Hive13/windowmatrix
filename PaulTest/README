@@ -74,3 +74,20 @@ AND 110110110  (438)
    0 0 0
 
 WIN!
+
+========== Outputing to the shiftbrites =========
+We will need to alternate rows.
+
+To use the 3x3 example again:
+
+<-- 0 0 1
+    0 1 0  -->
+<-- 1 0 0
+
+row1 = x & 7
+row2 = x & 46
+row3 = x & 428
+
+shift row 1 out left
+shift row2 out right
+shift row1 out left
