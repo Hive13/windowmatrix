@@ -1,5 +1,6 @@
-// 2009 Kenneth Finnegan
-// kennethfinnegan.blogspot.com
+// Modified from:
+// - 2009 Kenneth Finnegan
+// - kennethfinnegan.blogspot.com
 
 // Pins. 
 #define clockpin 13 // CI
@@ -11,6 +12,19 @@
 #define MAXBRIGHT 1023
 #define NumLEDs 48
 #define FADENUM 4
+
+// Not sure how well this will work.
+// Mainly because I am not sure how the compiler
+// will handle huge numbers.
+#define ARRAY_MASK 72057594037927935 // 2^56 - 1
+#define ROW1_MASK 71494644084506624 // 2^56-2^49
+#define ROW2_MASK 558551906910208 // 2^49-2^42
+#define ROW3_MASK 4363686772736 // 2^42-2^35
+#define ROW4_MASK 34091302912 // 2^35-2^28
+#define ROW5_MASK 266338304 // 2^28-2^21
+#define ROW6_MASK 2080768 // 2^21-2^14
+#define ROW7_MASK 16256 // 2^14-2^7
+#define ROW8_MASK 127 // 2^7-1
 
 // s[tate] t[arget] colors
 int s[NumLEDs][3] = {0}, t[NumLEDs][3] = {0};
