@@ -39,14 +39,16 @@ based on Pladma for the Meggy Jr. by Ken Corey
 #include <avr/pgmspace.h>
 
 
-#define screenWidth 8
+#define screenWidth 7
 #define screenHeight 8
 #define paletteSize 64
 
-#define MAXBRIGHT 1023
-#define MAXCURRENTRED    50
-#define MAXCURRENTGREEN  50
-#define MAXCURRENTBLUE   50
+#define MAXBRIGHT 1023 // not used?
+
+// dotclock / current register setup - 0 - 127: ~30% - 100% power
+#define MAXCURRENTRED    120
+#define MAXCURRENTGREEN  120
+#define MAXCURRENTBLUE   120
 
 // Pins. 
 #define clockpin 13 // CI
