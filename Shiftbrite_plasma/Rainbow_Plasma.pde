@@ -1,3 +1,9 @@
+// Note that the comments down below disregard the
+// amount of other stuff that's been added to this... 
+
+// Choose which demo is run here:
+enum { PLASMA, CONWAY_LIFE, COLORTEST } demo = PLASMA;
+
 /*
 
 Rainbowduino Plasma
@@ -87,6 +93,262 @@ int boardLEDstate = 1;
 
 void SetPixel(byte x, byte y, byte r, byte g, byte b);
 
+// =============================================================
+// For Conway's Game of Life:
+
+// TODO: Move all of this elsewhere. Modularize stuff.
+// Constants here belong elsewhere.
+
+typedef enum lifeState {
+  DEAD,         // Cell is dead.
+  STARVED,      // Newly dead from having < 2 alive neighbors
+  OVERCROWDED,  // Newly dead from having > 3 alive neighbors
+  BORN,         // Newly alive from having 3 living neighbors.
+  ALIVE         // Cell is alive.
+} lifeStateType;
+// Note that for the sake of the automata DEAD, STARVING, and
+// OVERCROWDED are all dead states, and BORN and ALIVE are both
+// living states. The 5 states exist just to provide some more
+// interesting coloring.
+
+// The table holding the entire Game of Life state.
+lifeStateType lifeTable[screenWidth][screenHeight];
+// Flag for whether or not the boundaries of the game wrap
+// around. If not, then anything past them is just considered
+// constantly dead.
+//bool lifeWrapAround = 1;
+// How many cycles before the simulation resets itself.
+// (TODO: Make this easily disabled. The idle reset is tied in
+// with this.)
+long lifeResetCycle = 100;
+// How many cycles until a simulation that has not changed
+// resets itself.
+long idleResetCycle = 5;
+
+// Current cycle
+long lifeCycle = 0;
+// Number of cycles run since the last time any state changed
+long lifeIdleCycle = 0;
+
+int count_live_neighbors(int x, int y);
+
+// Randomize the table for the same. 'p' should be in the
+// range (0,1) and it gives the probability that a cell
+// starts out alive. 0.5 is a good starting value.
+void life_randomize(float p) {
+  int threshold = floor(p * 1024.0);
+
+  int x = 0;
+  int y = 0;
+  for(x = 0; x < screenWidth; x++) {
+    for(y = 0; y < screenHeight; y++) {
+      int sample = random(0,1024);
+      lifeTable[x][y] = (sample < threshold) ? ALIVE : DEAD;
+    }
+  }
+}
+
+void life_glider() {
+  // y   x 0 1 2
+  // 0       X
+  // 1         X
+  // 2     X X X
+  lifeTable[1][0] = ALIVE;
+  lifeTable[2][1] = ALIVE;
+  lifeTable[0][2] = ALIVE;
+  lifeTable[1][2] = ALIVE;
+  lifeTable[2][2] = ALIVE;
+}
+
+// Run through one cycle of the Game of Life
+// Note on side effects: This has a 1-second delay now
+// to make it easier to follow.
+void cycle_game_of_life() {
+
+  // lifeCycle intentionally starts out at 0 so it is initialized
+  // when it first runs.
+  if (lifeCycle % lifeResetCycle == 0) {
+    float p = random(250,750)/1000.0;
+    life_randomize(p);
+    char buf[100];
+    // Using %f doesn't work for some reason. I get a question mark.
+    snprintf(buf, 100, "Resetting board, p=%i/1000", (int)(p*1000));
+    Serial.println(buf);
+    lifeCycle = 1;
+  }
+  ++lifeCycle;
+
+
+  // Uncomment to print game state over serial port
+  {
+    char buf2[100];
+    snprintf(buf2, 100, "Game state, cycle %li:", lifeCycle);
+    Serial.println(buf2);
+   
+    // One character for each cell, plus null terminator. 
+    char buf[screenWidth + 1];
+
+    int x = 0;
+    int y = 0;
+    Serial.println(buf);
+    for(y = 0; y < screenHeight; ++y) {
+      int offset = 0;
+      for(x = 0; x < screenWidth; ++x) {
+        // This only gives sensible results for a limited number
+        // of states in lifeTable. For up to 10 states, it will
+        // simply be the characters 0, 1, 2... 9.
+        buf[x] = '0' + lifeTable[x][y];
+      }
+      buf[x] = 0;
+      Serial.println(buf);
+    }
+  }
+
+  // If 'idle' is true at the end of these loops, no state changed.
+  bool idle = 1;
+
+  lifeStateType nextBoard[screenWidth][screenHeight];
+
+  int x = 0;
+  int y = 0;
+  for(x = 0; x < screenWidth; x++) {
+    for(y = 0; y < screenHeight; y++) {
+      int r, g, b;
+      r = g = b = 0;
+   
+      lifeStateType newState;
+
+      int neighbors = count_live_neighbors(x, y);
+
+      // Transition to a new state. Color based on the
+      // current state.
+      switch(lifeTable[x][y]) {
+      case DEAD:
+        // Leave colors at zero.
+        
+        if (neighbors == 3) newState = BORN;
+        else newState = DEAD;
+        
+        break;
+      case STARVED:
+        r = 255;
+        
+        if (neighbors == 3) newState = BORN;
+        else newState = DEAD;
+
+        break;
+      case OVERCROWDED:
+        g = 255;
+
+        if (neighbors == 3) newState = BORN;
+        else newState = DEAD;
+
+        break;
+      case BORN:
+        b = 255;
+
+        if (neighbors < 2) newState = STARVED;
+        else if (neighbors > 3) newState = OVERCROWDED;
+        else newState = ALIVE;
+
+        break;
+      case ALIVE:
+        r = g = b = 255;
+
+        if (neighbors < 2) newState = STARVED;
+        else if (neighbors > 3) newState = OVERCROWDED;
+        else newState = ALIVE;
+
+        break;
+      default:
+        // huh?
+        newState = lifeTable[x][y];
+        break;
+      }
+      
+      // Check if anything changed at all in this cycle
+      idle = idle && (lifeTable[x][y] == newState);
+
+      nextBoard[x][y] = newState;
+      
+      SetPixel(x, y, r, g, b);
+    }
+  }
+
+  // Copy the updated board over.
+  for(x = 0; x < screenWidth; ++x) {
+    for(y = 0; y < screenHeight; ++y) {
+      lifeTable[x][y] = nextBoard[x][y];
+    }
+  }
+
+  // Count up idle cycles, or reset the counter if state changed.
+  
+  if (idle) {
+    Serial.println("Game was idle at last cycle.");
+  }
+  
+  lifeIdleCycle = idle ? lifeIdleCycle + 1 : 0;
+  if (lifeIdleCycle >= idleResetCycle) {
+    lifeCycle = 0; // Trigger a reset
+    lifeIdleCycle = 0;
+    Serial.println("Game has been idle too long. Triggering reset.");
+  }
+
+  delay(500);
+}
+
+int count_live_neighbors(int x, int y) {
+  // For wraparound behavior, we add screenWidth to every x
+  // index (and screenHeight to every y index), then take it
+  // modulo screenWidth and screenHeight. This way, negative
+  // indices are normalized, and too large indices wrap back
+  // around.
+
+/*
+  {
+    char buf[100];
+    sprintf(buf, "Entered count_live_neighbors(%i,%i)", x, y);
+    Serial.println(buf);
+  }
+*/
+
+  // total = running total of of live neighbors
+  int total = 0;
+  // dx,dy = changes we make to the index
+  int dx, dy;
+  for(dx = -1; dx <= 1; ++dx) {
+    for(dy = -1; dy <= 1; ++dy) {
+      // Don't count the center square
+      if (dx == 0 && dy == 0) continue;
+
+      // If anyone is paranoid about optimization, one could
+      // easily change the loop indices since dx/dy have a
+      // constant added to them, and save a few steps.
+      char buf2[100];
+      int x2 = (x + dx + screenWidth) % screenWidth;
+      int y2 = (y + dy + screenHeight) % screenHeight;
+      lifeStateType state = lifeTable[x2][y2];
+      /*sprintf(buf2, "(%i,%i) to (%i,%i): state = %i", x, y, x2, y2, state);
+      Serial.println(buf2);
+      */
+
+      
+      total += (state == ALIVE || state == BORN);
+    }
+  }
+  /*
+  char buf[100];
+  sprintf(buf, "(%i,%i): %i neighbors", x, y, total);
+  Serial.println(buf);*/
+
+  return total;
+}
+
+// 2011-09-04 CMH
+// =============================================================
+
+
 //Converts an HSV color to RGB color
 void HSVtoRGB(void *vRGB, void *vHSV) 
 {
@@ -147,6 +409,7 @@ void setup()                    // run once, when the sketch starts
   byte color;
   int x,y;
 
+  Serial.begin(9600);
   //_init();
 
   // set board LED pin - ledPin
@@ -330,6 +593,19 @@ plasma_morph()
   }  
 }
 
+void color_test() {
+  int x = 0;
+  int y = 0;
+  for(x = 0; x < screenWidth; x++) {
+    for(y = 0; y < screenHeight; y++) {
+      int r = (x << 8) / screenWidth;
+      int g = (y << 8) / screenHeight;
+      int b = paletteShift & 0xff;
+      SetPixel(x, y, r, g, b);
+    }
+  }
+}
+
 void loop()                     // run over and over again
 {
 
@@ -340,8 +616,10 @@ void loop()                     // run over and over again
     
   
   paletteShift+=1;
-
-  switch(state) {
+  
+  switch (demo) {
+  case PLASMA:
+    switch(state) {
     case 0:
       CycleColorPalette();
       break;
@@ -351,7 +629,20 @@ void loop()                     // run over and over again
     default:
       state=0;
       break;
+    }
+    break;
+  case CONWAY_LIFE:
+    cycle_game_of_life();
+    break;
+  case COLORTEST:
+    color_test();
+    break;
+  default:
+    Serial.println("Unknown demo requested...");
+    break;
   }
+    
+  
   WriteLEDArray();      
 }
 
