@@ -1,6 +1,12 @@
-Various stuff to work with the Hive13 LED windowmatrix
+Various things to work with the Hive13 LED window matrix.
 
-More info:
-
+More info about that window matrix is here:
 http://wiki.hive13.org/Glass_Block_LED_Matrix
+
+For the Arduino with a Shiftbrite Shield and a string of Shiftbrite LEDs:
+ - shiftbrite_slave contains (unfinished) firmware to turn the Arduino into a
+slave which receives commands over the serial port to control what is
+displayed.
+ - Shiftbrite_plasma contains firmware to run a few display demos such as
+plasma or Conway's Game of Life.
 

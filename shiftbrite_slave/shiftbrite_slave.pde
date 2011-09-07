@@ -5,6 +5,12 @@
 // 
 // It is based off of Rainbow_Plasma.pde from the existing code in the repo.
 // =============================================================================
+// As of now it also has a really rudimentary serial command language.
+// cC clears the screen (it's overwritten very quickly though)
+// cQ queries for screen size (it will reply with x and y)
+// (First byte is BLOCK_START, which is now "c" - it signifies the start of the
+// command. Second byte is the command (see macros starting with CMD_). C and Q
+// are the only functioning ones right now.
 
 #include <math.h>
 #include <avr/pgmspace.h>
@@ -47,17 +53,43 @@ int frame = 0;
 // WriteLEDArray
 int LEDArray[screenWidth][screenHeight][3] = {0};
 
+// For our serial command protocol
+// ===============================
+
+// c
+#define BLOCK_START 0x63
+
+// P
+#define CMD_PING    0x50
+// Q
+#define CMD_QUERY   0x51
+// D
+#define CMD_DEMO    0x44
+// F
+#define CMD_FRAME   0x46
+// C
+#define CMD_CLEAR   0x43
+
 // =============================================================================
 // Function prototypes
 // =============================================================================
 void SetPixel(int x, int y, int r, int g, int b);
 void WriteLEDArray();
+void checkSerial();
 
 // =============================================================================
 // Arduino entry points
 // =============================================================================
 void setup() {
+  // These serial messages probably should be removed once a proper command
+  // system is added.
   Serial.begin(9600);
+  {
+    char buf[100];
+    snprintf(buf, 100, "Hello from Arduino with %ix%i LED screen.", screenWidth, screenHeight);
+    //Serial.println(buf);
+  }
+
   //_init();
 
   // Set board LED pin - ledPin
@@ -81,6 +113,8 @@ void setup() {
   delayMicroseconds(15);
   digitalWrite(latchpin,LOW);
 
+  //Serial.println("Shiftbrite initialization done.");
+
   // Initialize the screen
   for(int x = 0; x < screenWidth; ++x) {
     for(int y = 0; y < screenHeight; ++y) {
@@ -90,6 +124,9 @@ void setup() {
       SetPixel(x, y, r, g, b);
     }
   }
+  WriteLEDArray();
+  
+  //Serial.println("Wrote first frame.");
 }
 
 void loop() {
@@ -98,17 +135,43 @@ void loop() {
   else digitalWrite(13, LOW);
   
   // Compute a frame
+  /*
   for(int x = 0; x < screenWidth; ++x) {
     for(int y = 0; y < screenHeight; ++y) {
-      int r = (x * 255 / screenWidth + frame >> 2) & 0xFF;
-      int g = (y * 255 / screenHeight + frame >> 3) & 0xFF;
-      int b = (frame >> 4) & 0xFF;
+      int r = (x * 255 / screenWidth + frame >> 9) & 0xFF;
+      int g = (y * 255 / screenHeight + frame >> 10) & 0xFF;
+      int b = (frame >> 11) & 0xFF;
       SetPixel(x, y, r, g, b);
     }
   }
+  */
+
+  // Shift everything by one column.
+  for(int x = screenWidth-1; x > 0; --x) {
+    for(int y = 0; y < screenHeight; ++y) {
+      LEDArray[x][y][0] = LEDArray[x-1][y][0];
+      LEDArray[x][y][1] = LEDArray[x-1][y][1];
+      LEDArray[x][y][2] = LEDArray[x-1][y][2];
+    }
+  }
   
+  // Add in a new column with random colors
+  for(int y = 0; y < screenHeight; ++y) {
+    LEDArray[0][y][0] = random(0,255);
+    LEDArray[0][y][1] = random(0,255);
+    LEDArray[0][y][2] = random(0,255);
+  }
+  int d = 250.0 * (sin(frame >> 4) + 1.0);
+  /*char buf[100];
+  snprintf(buf, 100, "%i", d);
+  Serial.println(buf);*/
+  delay(d);
+  //delay(500);
+ 
   // Actually send that frame
   WriteLEDArray();
+  
+  checkSerial();
 
   // Increment frame number
   ++frame;
@@ -163,6 +226,71 @@ void WriteLEDArray() {
   digitalWrite(latchpin,HIGH); // latch data into registers
   delayMicroseconds(15);
   digitalWrite(latchpin,LOW);
+}
+
+// =============================================================================
+// Serial communication
+// =============================================================================
+void checkSerial() {
+  byte b;
+  long i = 0;
+
+  enum { WAITING, INSIDE_COMMAND } state;
+  state = WAITING;
+  
+  while (Serial.available() > 0) {
+    b = Serial.read();
+    switch(state) {
+    case WAITING:
+      if (b == BLOCK_START) {
+        state = INSIDE_COMMAND;
+      } else {
+        // Some sort of error here...
+      }
+      break;
+    case INSIDE_COMMAND:
+      switch(b) {
+      case CMD_PING:
+        Serial.println("Ping");
+        break;
+      case CMD_DEMO:
+        Serial.println("Demo");
+        break;
+      case CMD_CLEAR:
+        Serial.println("Clearing");
+        for(int x = 0; x < screenWidth; ++x) {
+          for(int y = 0; y < screenHeight; ++y) {
+            LEDArray[x][y][0] = 0;
+            LEDArray[x][y][1] = 0;
+            LEDArray[x][y][2] = 0;
+          }
+        }
+        break;
+      case CMD_FRAME:
+        Serial.println("Frame...");
+        break;
+      case CMD_QUERY:
+        char buf[100];
+        snprintf(buf, 100, "%i %i", screenWidth, screenHeight);
+        Serial.print(buf);
+        break;
+      default:
+        Serial.println("Unknown command!");
+        break;
+      }
+      state = WAITING;
+      break;
+    default:
+      break;
+    }
+    ++i;
+  }
+  
+  if (i) {
+    char buf[100];
+    snprintf(buf, 100, "Just received %i bytes over serial.", i);
+    //Serial.println(buf);
+  }
 }
 
 // =============================================================================

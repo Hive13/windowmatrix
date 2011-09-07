@@ -2,7 +2,7 @@
 // amount of other stuff that's been added to this... 
 
 // Choose which demo is run here:
-enum { PLASMA, CONWAY_LIFE, COLORTEST } demo = PLASMA;
+enum { PLASMA, CONWAY_LIFE, COLORTEST } demo = CONWAY_LIFE;
 
 /*
 
@@ -49,12 +49,10 @@ based on Pladma for the Meggy Jr. by Ken Corey
 #define screenHeight 8
 #define paletteSize 64
 
-#define MAXBRIGHT 1023 // not used?
-
-// dotclock / current register setup - 0 - 127: ~30% - 100% power
-#define MAXCURRENTRED    120
-#define MAXCURRENTGREEN  120
-#define MAXCURRENTBLUE   120
+#define MAXBRIGHT 1023
+#define MAXCURRENTRED    50
+#define MAXCURRENTGREEN  50
+#define MAXCURRENTBLUE   50
 
 // Pins. 
 #define clockpin 13 // CI
@@ -123,7 +121,7 @@ lifeStateType lifeTable[screenWidth][screenHeight];
 long lifeResetCycle = 100;
 // How many cycles until a simulation that has not changed
 // resets itself.
-long idleResetCycle = 5;
+long idleResetCycle = 3;
 
 // Current cycle
 long lifeCycle = 0;
@@ -168,7 +166,9 @@ void cycle_game_of_life() {
   // lifeCycle intentionally starts out at 0 so it is initialized
   // when it first runs.
   if (lifeCycle % lifeResetCycle == 0) {
-    float p = random(250,750)/1000.0;
+    // Denser configurations die out very quickly, so p is kept
+    // in [0.125, 0.5]
+    float p = random(125,500)/1000.0;
     life_randomize(p);
     char buf[100];
     // Using %f doesn't work for some reason. I get a question mark.
@@ -231,21 +231,21 @@ void cycle_game_of_life() {
         
         break;
       case STARVED:
-        r = 255;
+        r = 32;
         
         if (neighbors == 3) newState = BORN;
         else newState = DEAD;
 
         break;
       case OVERCROWDED:
-        g = 255;
+        g = 32;
 
         if (neighbors == 3) newState = BORN;
         else newState = DEAD;
 
         break;
       case BORN:
-        b = 255;
+        b = g = 255;
 
         if (neighbors < 2) newState = STARVED;
         else if (neighbors > 3) newState = OVERCROWDED;
@@ -295,7 +295,7 @@ void cycle_game_of_life() {
     Serial.println("Game has been idle too long. Triggering reset.");
   }
 
-  delay(500);
+  delay(1500);
 }
 
 int count_live_neighbors(int x, int y) {
