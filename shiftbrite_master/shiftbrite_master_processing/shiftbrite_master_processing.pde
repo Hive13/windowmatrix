@@ -89,9 +89,13 @@ void draw() {
       // offset is in [0, lim-1]
       int maskX = mirrorMask ? lim - x - 1 : x;
       maskX = (maskX + offset) % lim;
-      int val = 255 * textMask[y][maskX];
+      
+      byte mask1 = textMask[y][maskX];
+      int r = 255 * mask1;
+      int g = 255 * mask1;
+      int b = 90 * mask1;
       //int val = 100;
-      display.pixels[linear] = color(val);
+      display.pixels[linear] = color(r, g, b);
     }
   }
   display.updatePixels();
@@ -102,16 +106,16 @@ void draw() {
   //tryClear();
   //testFrame();
   while (serialPort.available() > 0) {
-    delay(50);
+    delay(10);
     byte[] msg = serialPort.readBytes();
     System.out.printf("Incoming before a command? %s\n", new String(msg));
     System.out.printf("flushing buffer...\n");
   }
   pushFrame(display);
-  delay(200);
+  delay(100);
   //print("Test");
   while (serialPort.available() > 0) {
-    delay(50);
+    delay(10);
     byte[] msg = serialPort.readBytes();
     System.out.printf("Incoming: %s\n", new String(msg));
     System.out.printf("flushing buffer...\n");
@@ -172,11 +176,22 @@ void pushFrame(PImage img) {
     }
   }
   try {
-    serialPort.output.write(cmd);
-    System.out.printf("Outgoing (%d bytes), hex: ", cmd.length);
-    for(int i = 0; i < cmd.length; ++i) {
-      System.out.printf("%x", cmd[i]);
+    int chunkSize = 32;
+    int offset = 0;
+    while (offset < cmd.length) {
+      int remaining = cmd.length - offset;
+      byte tmp[] = new byte[min(chunkSize, remaining)];
+      for(int i = 0; i < chunkSize && i < remaining; ++i) {
+        tmp[i] = cmd[offset + i];
+      }
+      serialPort.output.write(tmp);
+      System.out.printf("Outgoing (%d bytes), hex: ", tmp.length);
+      for(int i = 0; i < tmp.length; ++i) {
+        System.out.printf("%x", tmp[i]);
+      }
+      offset += chunkSize;
     }
+
     System.out.printf("\nASCII: %s", new String(cmd));
     System.out.printf("\n");
   } catch(IOException e) {
