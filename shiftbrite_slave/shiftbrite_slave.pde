@@ -9,7 +9,7 @@
 // whole block of CMD_* and REPLY_* constants.
 // Commands so far:
 // cPe  - Ping (should reply rAe for reply start, ACK, reply end)
-// cQe  - Query display size
+// cQe  - Query display size (it will reply in the format "x y")
 // cCe  - Clear the display
 // cF{rgbrgbrgbrgbrgb..}e  - Send frame. Between the 'F' and the 'e, put
 // one scanline at a time with one byte for R, one for G, one for B, and so
@@ -132,6 +132,9 @@ int LEDArray[screenWidth][screenHeight][3] = {0};
 // I (internal error, most likely not your fault)
 #define ERROR_INTERNAL 0x49
 
+// W (placeholder error)
+#define ERROR_WHATEVER 0x57
+
 
 // =============================================================================
 // Function prototypes
@@ -218,6 +221,7 @@ void loop() {
       LEDArray[0][y][1] = 255 * (sample > 97);
       LEDArray[0][y][2] = 127 * (sample > 60) + 127 * (sample > 80);
     }
+    WriteLEDArray();
     delay(200);
   } else if (mode == DEMO_GREEN_VERT) {
     // Shift everything by one column.
@@ -236,11 +240,12 @@ void loop() {
       LEDArray[x][0][1] = 127 * (sample > 60) + 127 * (sample > 80);;
       LEDArray[x][0][2] = 255 * (sample > 97);
     }
+    WriteLEDArray();
     delay(200);
   }
  
   // Actually send that frame
-  WriteLEDArray();
+  // WriteLEDArray();
   
   checkSerial();
 
@@ -273,6 +278,27 @@ void SB_SendPacket() {
 void WriteLEDArray() {
   // Write to PWM control registers (color)
   SB_CommandMode = B00;
+
+  #if DEBUG
+  {
+    Serial.println("Screen state:");
+    char hexChars[5];
+    hexChars[4] = 0;
+    for(int y = 0; y < screenHeight; ++y) {
+      char rowStr[screenWidth*4*3 + 2];
+      rowStr[screenWidth*4*3] = 0;
+      rowStr[screenWidth*4*3 + 1] = 0;
+      int offset = 0;
+      for(int x = 0; x < screenWidth; ++x) {
+        for(int comp = 0; comp < 3; ++comp) {
+          snprintf(rowStr + offset, 5, "%4x", LEDArray[x][y][comp]);
+          offset += 4;
+        }
+      }
+      Serial.println(rowStr);
+    }
+  }
+  #endif
 
   // Perhaps Chris Davis would like to explain this section too?
   for (int col = screenWidth - 1; col >=0; col--) {
@@ -317,16 +343,23 @@ void checkSerial() {
   // WAITING_END: We have a command; we're awaiting end-of-block.
   // FLUSHING: We're flushing input until the next command block starts, on
   // account of receiving erroneous data.
-  static enum { IDLE, WAITING_COMMAND, WAITING_ARGS, WAITING_END, FLUSHING } state;
-  //state = IDLE;
+  enum { IDLE, WAITING_COMMAND, WAITING_ARGS, WAITING_END, FLUSHING } state = IDLE;
   // Set 'command' to the command we received (i.e. one of the CMD_* constants)
-  static int command;
+  int command = -1;
   // Offset to hold some additional state when in WAITING_ARGS state
   // (e.g. current position for CMD_FRAME)
-  static int offset;
+  int offset = 0;
   
-  while (Serial.available() > 0) {
-    debugMsg(" byte ");
+  do {
+    // Only block if we're not in the IDLE state.
+    if (Serial.available() == 0 && state == IDLE) {
+      break;
+    }
+    while (Serial.available() == 0) {
+      delay(1);
+    }
+    
+    //debugMsg(" byte ");
     b = Serial.read();
     switch(state) {
     case FLUSHING:
@@ -349,7 +382,7 @@ void checkSerial() {
       }
       break;
     case WAITING_COMMAND:
-      debugMsg(" waiting command ");
+      //debugMsg(" waiting command ");
       command = b;
       switch(b) {
       // Check that it's a valid command.
@@ -372,7 +405,7 @@ void checkSerial() {
       }
       break;
     case WAITING_END:
-      debugMsg(" waiting end ");
+      //debugMsg(" waiting end ");
       if (b != CMD_BLOCK_END) {
         replyError(ERROR_ARG_UNEXPECTED);
         state = FLUSHING;
@@ -382,6 +415,10 @@ void checkSerial() {
       state = IDLE;
       switch(command) {
       case CMD_PING:
+        replyAck();
+        break;
+      case CMD_FRAME:
+        WriteLEDArray();
         replyAck();
         break;
       case CMD_DEMO:
@@ -402,6 +439,7 @@ void checkSerial() {
             LEDArray[x][y][2] = 0;
           }
         }
+        WriteLEDArray();
         replyAck();
         break;
       case CMD_QUERY:
@@ -417,10 +455,10 @@ void checkSerial() {
       }
       break;
     case WAITING_ARGS:
-      debugMsg(" waiting args ");
+      //debugMsg(" waiting args ");
       switch(command) {
       case CMD_FRAME:
-        debugMsg(" in CMD_FRAME ");
+        //debugMsg(" in CMD_FRAME ");
         // Avoid, very heavily, overrunning our array!
         if (offset >= (screenWidth*screenHeight*3)) {
           debugMsg(" offset too large ");
@@ -447,12 +485,18 @@ void checkSerial() {
           //    => offset_xy / screenWidth < screenHeight
           // So the second index should be safe.
           // (3) comp is in [0,2] so that index should be safe.
+          //LEDArray[offset_xy % screenWidth][offset_xy / screenWidth][comp] = b;
           LEDArray[offset_xy % screenWidth][offset_xy / screenWidth][comp] = b;
 
           offset += 1;
           if (offset == screenHeight*screenWidth*3) {
             debugMsg(" hit offset end! ");
             state = WAITING_END;
+          }
+          if (offset > screenHeight*screenWidth*3) {
+            debugMsg(" surpassed offset end! ");
+            replyError(ERROR_ARG_UNEXPECTED);
+            state = FLUSHING;
           }
         }
         break;
@@ -462,7 +506,7 @@ void checkSerial() {
         state = FLUSHING;
         break;
       }
-      debugMsg(" leaving waiting args ");
+      //debugMsg(" leaving waiting args ");
       break;
     default:
       debugMsg(" unknown state? ");
@@ -472,7 +516,7 @@ void checkSerial() {
       break;
     }
     ++i;
-  }
+  } while (state != IDLE);
   
   /*
   if (i) {
@@ -512,5 +556,12 @@ void SetPixel(int x, int y, int r, int g, int b)
   LEDArray[x][y][0] = r;
   LEDArray[x][y][1] = g;
   LEDArray[x][y][2] = b;
+  /*
+  {
+    char buf[200];
+    snprintf(buf, 200, "SetPixel(%i,%i,%i,%i,%i)", x, y, r, g, b);
+    debugMsg(buf);
+  }
+  */
 }
 
