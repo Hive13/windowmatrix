@@ -1,9 +1,7 @@
 import processing.serial.*;
 // =============================================================================
-// Right now this just sends some Perlin noise to the display.
-// (1) I need to figure out why its buffering is weird.
-// (2) I need to get consistent performance with getting the ACK
-// reply after a frame is sent.
+// This scrolls an image (in the form of a byte[][] mask) across the LED
+// display. It still has some issues that need work.
 
 Serial serialPort;
 int displayWidth;
