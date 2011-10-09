@@ -12,116 +12,149 @@ float t;
 PImage display;
 int scaleFactor;
 PFont font;
-int offset;
+float offset;
 
+// How much the offset is updated at each frame. (Unit is pixels)
+float offset_delta;
+
+// If true, don't send anything to the LED display
+boolean dryRun;
 
 void setup() {
 
   displayWidth = 7;
   displayHeight = 8;
   scaleFactor = 15;
-  offset = 0;
-  size(displayWidth*scaleFactor, displayHeight*scaleFactor);
+  offset = 0.0;
+  offset_delta = 0.2;
+  dryRun = false;
+  size(displayWidth*scaleFactor * 2, displayHeight*scaleFactor * 2);
   t = 0;
-  try {
-    serialPort = initSerial("/dev/ttyUSB0", 9600);
-    serialPort.buffer(1);
-  } catch(Exception e) {
-    print("Error opening serial port: " + e.toString());
+  if (!dryRun) {
+    try {
+      serialPort = initSerial("/dev/ttyUSB0", 9600);
+      serialPort.buffer(1);
+    } catch(Exception e) {
+      println("Error opening serial port: " + e.toString());
+    }
+    println("Successfully opened serial port!");
+  } else {
+    println("Not using serial port.");
   }
-  print("Successfully opened serial port!");
   // We turn off framerate and manage our own delays currently.
   //frameRate(30);
   
   display = createImage(displayWidth, displayHeight, RGB);
-  font = loadFont("Monospaced.plain-8.vlw");
-  textFont(font);
+
+/*  
+  // Load an image and load it into textMask
+  PImage img = loadImage("hive13.png");
+  img.loadPixels();
+  // We must truncate everything beyond displayHeight
+  textMask3 = new byte[displayHeight][img.width];
+  for(int y = 0; y < img.height && y < displayHeight; ++y) {
+    final int offset = y * img.width;
+    for(int x = 0; x < img.width; ++x) {
+      textMask3[y][x] = (byte) img.pixels[offset + x];
+    }
+  }
+*/
 }
 
 void draw() {
 
   boolean mirrorImage = false;
   boolean mirrorMask = true;
-  byte[][] textMask = {
-    {1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0},
-    {1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0},
-    {1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0},
-    {1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0},
-    {1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0},
-    {1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0},
-    {1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0},
-    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-  };
-  byte[][] textMask2 = {
-    {1, 0},
-    {1, 0},
-    {1, 0},
-    {1, 0},
-    {1, 0},
-    {1, 0},
-    {1, 0},
-    {1, 0},
-  };
-  /*  
-  display.loadPixels();
-  for(int y = 0; y < displayHeight; ++y) {
-    for(int x = 0; x < displayWidth; ++x) {
-      int linear = (displayWidth*y + x);
-      int r = 255*int(noise(x/1.0, y/1.2, t/2.0) + 0.5);
-      int g = 255*int(noise(x/1.3, y/1.4, t/3.0) + 0.5);
-      int b = 255*int(noise(x/1.9, y/1.7, t/4.0) + 0.5);
-      display.pixels[linear] = color(r,g,b);
-    }
-  }
-  */
-  
-  /*String s = "Hive13";
-  text(s, 0, 0);*/
-  
-  //display.updatePixels();
-  
-  display.loadPixels();
-  int lim = textMask[0].length;
-  for(int y = 0; y < displayHeight; ++y) {
-    for(int x = 0; x < displayWidth; ++x) {
-      int xEff = mirrorImage ? x : displayWidth - x - 1;
-      int linear = (displayWidth*y + xEff);
-      // offset is in [0, lim-1]
-      int maskX = mirrorMask ? lim - x - 1 : x;
-      maskX = (maskX + offset) % lim;
-      
-      byte mask1 = textMask[y][maskX];
-      int r = 255 * mask1;
-      int g = 255 * mask1;
-      int b = 90 * mask1;
-      //int val = 100;
-      display.pixels[linear] = color(r, g, b);
-    }
-  }
-  display.updatePixels();
-  
+
+  scrollingHive13Logo(display);
+
   // Display the image ('display') to the screen
   image(display, 0, 0, displayWidth*scaleFactor, displayHeight*scaleFactor);
-  // Push it to the LED display too
-  //tryClear();
-  //testFrame();
-  while (serialPort.available() > 0) {
+  
+  while (!dryRun && serialPort.available() > 0) {
     delay(10);
     byte[] msg = serialPort.readBytes();
     System.out.printf("Incoming before a command? %s\n", new String(msg));
     System.out.printf("flushing buffer...\n");
   }
-  pushFrame(display);
-  delay(100);
+  if (!dryRun) pushFrame(display);
+  delay(60);
   //print("Test");
-  while (serialPort.available() > 0) {
+  while (!dryRun && serialPort.available() > 0) {
     delay(10);
     byte[] msg = serialPort.readBytes();
-    System.out.printf("Incoming: %s\n", new String(msg));
+    //System.out.printf("Incoming: %s\n", new String(msg));
+    System.out.printf("Incoming: %d bytes\n", msg.length);
     System.out.printf("flushing buffer...\n");
   }
   t += 1;
-  offset = (offset + 1) % lim;
+  
+
+}
+
+void scrollingHive13Logo(PImage display) {
+  // Some old text masks:
+  byte[][] textMask = {
+    {1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0},
+    {1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0},
+    {1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0},
+    {1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0},
+    {1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0},
+    {1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0},
+    {1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+  };
+  
+  scrollImage(display, textMask, offset, 255, false, true);
+  
+  offset = (offset + offset_delta) % textMask[0].length;
+}
+
+// Scrolls imgMask across 'display', where imgMask is a byte array.
+// Indexing is imgMask[y][x] - possibly the reverse of what's expected.
+// If it has more elements in y than can fit in the 'display' then it
+// will disregard larger y values.
+// However, it will be scrolled horizontally for larger x than fits on
+// 'display'. 'offset' is a distance in pixels of how far to scroll.
+// If it is fractional, interpolation is done.
+// 'scaleFactor' will scale the elements of the mask before putting
+// them on the display. If your mask is only 0s and 1s, 255 would be
+// an appropriate number here.
+// mirrorImage and mirrorMask control whether the mask and the motion
+// are reversed, respectively.
+// FIXME: This should be a separate class. The number of parameters is huge.
+void scrollImage(PImage display, byte imgMask[][], float offset, float scaleFactor, boolean mirrorImage, boolean mirrorMask)
+{
+    
+  display.loadPixels();
+  int lim = imgMask[0].length;
+  for(int y = 0; y < displayHeight; ++y) {
+    for(int x = 0; x < displayWidth; ++x) {
+      int xEff = mirrorImage ? x : displayWidth - x - 1;
+      int linear = (displayWidth*y + xEff);
+      // offset is in [0, lim-1]
+      float maskX = mirrorMask ? lim - x - 1 : x;
+      maskX = (maskX + offset) % lim;
+      
+      // Get the indices on both sides.
+      int maskX1 = floor(maskX);
+      int maskX2 = (maskX1 + 1) % lim;
+      // f tells how much of each to mix in to interpolate
+      float f = maskX - maskX1;
+      //print(f);
+      //print("\n");
+      
+      byte mask1 = imgMask[y][maskX1];
+      byte mask2 = imgMask[y][maskX2];
+      float lerped = lerp(mask1, mask2, f);
+      int r = floor(lerped * 255.0);
+      int g = floor(lerped * 255.0);
+      int b = floor(lerped * 255.0);
+      //int val = 100;
+      display.pixels[linear] = color(r, g, b);
+    }
+  }
+  display.updatePixels();
 }
 
 void tryClear() {
@@ -176,6 +209,7 @@ void pushFrame(PImage img) {
     }
   }
   try {
+    // Divide the buffer up a bit so that it does not overrun the buffers
     int chunkSize = 32;
     int offset = 0;
     while (offset < cmd.length) {
@@ -189,6 +223,7 @@ void pushFrame(PImage img) {
       for(int i = 0; i < tmp.length; ++i) {
         System.out.printf("%x", tmp[i]);
       }
+      System.out.printf("\n");
       offset += chunkSize;
     }
 
