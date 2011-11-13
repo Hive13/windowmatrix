@@ -50,7 +50,7 @@ void setup() {
   size(displayWidth*scaleFactor, displayHeight*scaleFactor);
   if (!dryRun) {
     try {
-      serialPort = initSerial("/dev/ttyUSB0", 9600);
+      serialPort = initSerial("/dev/ttyUSB1", 9600);
       serialPort.buffer(1);
     } catch(Exception e) {
       println("Error opening serial port: " + e.toString());
